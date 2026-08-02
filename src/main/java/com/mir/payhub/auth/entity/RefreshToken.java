@@ -3,15 +3,15 @@ package com.mir.payhub.auth.entity;
 import com.mir.payhub.common.entity.BaseEntity;
 import com.mir.payhub.user.entity.User;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.OffsetDateTime;
 
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "refresh_tokens")
 public class RefreshToken extends BaseEntity {

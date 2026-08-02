@@ -2,66 +2,86 @@ package com.mir.payhub.auth.service;
 
 import com.mir.payhub.auth.entity.RefreshToken;
 import com.mir.payhub.auth.repository.RefreshTokenRepository;
+import com.mir.payhub.common.util.HashUtils;
+import com.mir.payhub.security.jwt.JwtService;
 import com.mir.payhub.user.entity.User;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class RefreshTokenService {
 
+    private final JwtService jwtService;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final PasswordEncoder passwordEncoder;
 
-    /**
-     * Generates a raw refresh token.
-     */
-    public String generateRawToken() {
-        return UUID.randomUUID() + "." + UUID.randomUUID();
-    }
+    @Transactional
+    public String create(User user, String deviceName, String ipAddress) {
 
-    /**
-     * Stores only the hashed refresh token.
-     */
-    public RefreshToken create(User user) {
-
+        // Remove any previous refresh tokens for this user.
         refreshTokenRepository.deleteByUser(user);
 
-        String rawToken = generateRawToken();
+        String refreshToken = jwtService.generateRefreshToken(user);
 
-        RefreshToken refreshToken = new RefreshToken();
-        refreshToken.setUser(user);
-        refreshToken.setTokenHash(passwordEncoder.encode(rawToken));
-        refreshToken.setLastUsedAt(OffsetDateTime.now());
-        refreshToken.setRevoked(false);
+        RefreshToken entity = RefreshToken.builder()
+                .user(user)
+                .tokenHash(HashUtils.sha256(refreshToken))
+                .deviceName(deviceName)
+                .ipAddress(ipAddress)
+                .expiresAt(jwtService.extractExpiration(refreshToken))
+                .lastUsedAt(OffsetDateTime.now())
+                .revoked(false)
+                .build();
 
-        refreshTokenRepository.save(refreshToken);
-
-        /*
-         * IMPORTANT:
-         * We return the raw token only once.
-         * The client stores it.
-         * Database stores only the hash.
-         */
-        refreshToken.setTokenHash(rawToken);
+        refreshTokenRepository.save(entity);
 
         return refreshToken;
     }
 
-    /**
-     * Verify a presented refresh token.
-     */
-    public boolean matches(
-            RefreshToken stored,
-            String presentedToken
-    ) {
-        return passwordEncoder.matches(
-                presentedToken,
-                stored.getTokenHash()
-        );
+    @Transactional(readOnly = true)
+    public RefreshToken findByToken(String refreshToken) {
+
+        return refreshTokenRepository
+                .findByTokenHash(HashUtils.sha256(refreshToken))
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isValid(String refreshToken, RefreshToken entity) {
+
+        if (entity == null) {
+            return false;
+        }
+
+        if (entity.isRevoked()) {
+            return false;
+        }
+
+        if (entity.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            return false;
+        }
+
+        return HashUtils.sha256(refreshToken)
+                .equals(entity.getTokenHash());
+    }
+
+    @Transactional
+    public void revoke(User user) {
+        refreshTokenRepository.deleteByUser(user);
+    }
+
+    @Transactional
+    public void revoke(RefreshToken refreshToken) {
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+    }
+
+    @Transactional
+    public void updateLastUsed(RefreshToken refreshToken) {
+        refreshToken.setLastUsedAt(OffsetDateTime.now());
+        refreshTokenRepository.save(refreshToken);
     }
 }
