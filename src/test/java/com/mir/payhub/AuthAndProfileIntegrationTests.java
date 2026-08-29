@@ -2,6 +2,7 @@ package com.mir.payhub;
 
 import com.jayway.jsonpath.JsonPath;
 import com.mir.payhub.auth.repository.RefreshTokenRepository;
+import com.mir.payhub.account.repository.FinancialAccountRepository;
 import com.mir.payhub.profile.repository.ProfileRepository;
 import com.mir.payhub.verification.repository.VerificationRepository;
 import com.mir.payhub.common.enums.RoleType;
@@ -27,6 +28,7 @@ class AuthAndProfileIntegrationTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ProfileRepository profileRepository;
+    @Autowired private FinancialAccountRepository financialAccountRepository;
     @Autowired private VerificationRepository verificationRepository;
     @Autowired private RefreshTokenRepository refreshTokenRepository;
     @Autowired private UserRepository userRepository;
@@ -34,6 +36,7 @@ class AuthAndProfileIntegrationTests {
 
     @BeforeEach
     void resetData() {
+        financialAccountRepository.deleteAll();
         verificationRepository.deleteAll();
         profileRepository.deleteAll();
         refreshTokenRepository.deleteAll();
@@ -141,6 +144,42 @@ class AuthAndProfileIntegrationTests {
         mockMvc.perform(post("/api/v1/verification")
                         .header("Authorization", "Bearer " + tokens.accessToken()))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void accountsAreCreatedWithCurrencyAndVisibleOnlyToTheirOwner() throws Exception {
+        Tokens owner = register("account-owner@example.com");
+        Tokens other = register("account-other@example.com");
+
+        createCompletePersonalProfile(owner);
+        createCompletePersonalProfile(other);
+
+        mockMvc.perform(post("/api/v1/accounts")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currency\":\"inr\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.currency").value("INR"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        mockMvc.perform(post("/api/v1/accounts")
+                        .header("Authorization", "Bearer " + owner.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currency\":\"INR\"}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(get("/api/v1/accounts")
+                        .header("Authorization", "Bearer " + other.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    private void createCompletePersonalProfile(Tokens tokens) throws Exception {
+        mockMvc.perform(post("/api/v1/profile")
+                        .header("Authorization", "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"profileType\":\"PERSONAL\",\"name\":\"Ada Lovelace\",\"country\":\"GB\",\"dateOfBirth\":\"1815-12-10\"}"))
+                .andExpect(status().isCreated());
     }
 
     private Tokens register(String email) throws Exception {
