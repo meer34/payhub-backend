@@ -3,6 +3,7 @@ package com.mir.payhub;
 import com.jayway.jsonpath.JsonPath;
 import com.mir.payhub.auth.repository.RefreshTokenRepository;
 import com.mir.payhub.profile.repository.ProfileRepository;
+import com.mir.payhub.verification.repository.VerificationRepository;
 import com.mir.payhub.common.enums.RoleType;
 import com.mir.payhub.user.entity.Role;
 import com.mir.payhub.user.repository.RoleRepository;
@@ -26,12 +27,14 @@ class AuthAndProfileIntegrationTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ProfileRepository profileRepository;
+    @Autowired private VerificationRepository verificationRepository;
     @Autowired private RefreshTokenRepository refreshTokenRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private RoleRepository roleRepository;
 
     @BeforeEach
     void resetData() {
+        verificationRepository.deleteAll();
         profileRepository.deleteAll();
         refreshTokenRepository.deleteAll();
         userRepository.deleteAll();
@@ -107,6 +110,37 @@ class AuthAndProfileIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"currentPassword\":\"password123\",\"newPassword\":\"password456\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void completePersonalProfileCanStartAndReadKycVerification() throws Exception {
+        Tokens tokens = register("verification@example.com");
+        mockMvc.perform(post("/api/v1/profile")
+                        .header("Authorization", "Bearer " + tokens.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"profileType\":\"PERSONAL\",\"name\":\"Ada Lovelace\",\"country\":\"GB\",\"dateOfBirth\":\"1815-12-10\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/verification")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verificationType").value("KYC"))
+                .andExpect(jsonPath("$.status").value("NOT_STARTED"));
+
+        mockMvc.perform(post("/api/v1/verification")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.verificationType").value("KYC"))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void verificationRequiresAnOwnedCompleteProfile() throws Exception {
+        Tokens tokens = register("no-profile@example.com");
+
+        mockMvc.perform(post("/api/v1/verification")
+                        .header("Authorization", "Bearer " + tokens.accessToken()))
+                .andExpect(status().isNotFound());
     }
 
     private Tokens register(String email) throws Exception {
