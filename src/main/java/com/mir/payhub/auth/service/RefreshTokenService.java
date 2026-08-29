@@ -21,9 +21,6 @@ public class RefreshTokenService {
     @Transactional
     public String create(User user, String deviceName, String ipAddress) {
 
-        // Remove any previous refresh tokens for this user.
-        refreshTokenRepository.deleteByUser(user);
-
         String refreshToken = jwtService.generateRefreshToken(user);
 
         RefreshToken entity = RefreshToken.builder()
@@ -50,6 +47,14 @@ public class RefreshTokenService {
     }
 
     @Transactional(readOnly = true)
+    public RefreshToken findByTokenWithLock(String refreshToken) {
+
+        return refreshTokenRepository
+                .findWithLockByTokenHash(HashUtils.sha256(refreshToken))
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
     public boolean isValid(String refreshToken, RefreshToken entity) {
 
         if (entity == null) {
@@ -70,17 +75,24 @@ public class RefreshTokenService {
 
     @Transactional
     public void revoke(User user) {
-        refreshTokenRepository.deleteByUser(user);
+
+        refreshTokenRepository.findByUserAndRevokedFalse(user)
+                .ifPresent(token -> {
+                    token.setRevoked(true);
+                    refreshTokenRepository.saveAndFlush(token);
+                });
     }
 
     @Transactional
     public void revoke(RefreshToken refreshToken) {
+
         refreshToken.setRevoked(true);
-        refreshTokenRepository.save(refreshToken);
+        refreshTokenRepository.saveAndFlush(refreshToken);
     }
 
     @Transactional
     public void updateLastUsed(RefreshToken refreshToken) {
+
         refreshToken.setLastUsedAt(OffsetDateTime.now());
         refreshTokenRepository.save(refreshToken);
     }

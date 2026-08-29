@@ -16,18 +16,19 @@ import java.util.Set;
 @Table(name = "users")
 public class User extends BaseEntity {
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String firstName;
 
+    @Column(length = 100)
     private String lastName;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(unique = true)
+    @Column(unique = true, length = 20)
     private String mobile;
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String password;
 
     @Builder.Default

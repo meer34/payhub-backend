@@ -18,6 +18,6 @@ logging:
 application:
   security:
     jwt:
-      secret-key: 3c9d8f2b5a7e1c4d9f8b6a2e7c5d1f9a3b8e6c2d7f4a1b9c5e8d2f6a7b1c3d9e
+      secret-key: ${JWT_SECRET}
       access-token-expiration: 900000
       refresh-token-expiration: 604800000

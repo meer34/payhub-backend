@@ -3,6 +3,8 @@ package com.mir.payhub.security.config;
 import com.mir.payhub.security.filter.JwtAuthenticationFilter;
 import com.mir.payhub.security.jwt.JwtProperties;
 import com.mir.payhub.security.service.CustomUserDetailsService;
+import com.mir.payhub.security.RestAuthenticationEntryPoint;
+import com.mir.payhub.security.RestAccessDeniedHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +30,8 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final RestAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     PasswordEncoder passwordEncoder() {
@@ -67,10 +71,18 @@ public class SecurityConfig {
 
                 .authenticationProvider(authenticationProvider())
 
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
+
                 .authorizeHttpRequests(auth -> auth
 
                         .requestMatchers(
-                                "/api/v1/auth/**",
+                                "/api/v1/auth/register",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout",
+                                "/error",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**"
                         ).permitAll()

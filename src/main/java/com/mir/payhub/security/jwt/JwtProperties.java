@@ -1,10 +1,13 @@
 package com.mir.payhub.security.jwt;
 
+import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "jwt")
+@Validated
+@ConfigurationProperties(prefix = "application.security.jwt")
 public record JwtProperties(
-        String secret,
+        @NotBlank String secretKey,
         long accessTokenExpiration,
         long refreshTokenExpiration
 ) {

@@ -6,7 +6,6 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -16,20 +15,18 @@ import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
 public class JwtService {
 
-    @Value("${application.security.jwt.secret-key}")
-    private String secretKey;
+    public static final String TOKEN_TYPE_CLAIM = "token_type";
+    private static final String ACCESS_TOKEN_TYPE = "ACCESS";
+    private static final String REFRESH_TOKEN_TYPE = "REFRESH";
 
-    @Value("${application.security.jwt.access-token-expiration}")
-    private long accessTokenExpiration;
-
-    @Value("${application.security.jwt.refresh-token-expiration}")
-    private long refreshTokenExpiration;
+    private final JwtProperties jwtProperties;
 
     public String generateAccessToken(User user) {
         return generateAccessToken(new HashMap<>(), user);
@@ -39,7 +36,8 @@ public class JwtService {
         return buildToken(
                 extraClaims,
                 user,
-                accessTokenExpiration
+                jwtProperties.accessTokenExpiration(),
+                ACCESS_TOKEN_TYPE
         );
     }
 
@@ -47,18 +45,22 @@ public class JwtService {
         return buildToken(
                 new HashMap<>(),
                 user,
-                refreshTokenExpiration
+                jwtProperties.refreshTokenExpiration(),
+                REFRESH_TOKEN_TYPE
         );
     }
 
     private String buildToken(
             Map<String, Object> extraClaims,
             User user,
-            long expiration
+            long expiration,
+            String tokenType
     ) {
 
         return Jwts.builder()
                 .claims(extraClaims)
+                .claim(TOKEN_TYPE_CLAIM, tokenType)
+                .id(UUID.randomUUID().toString())
                 .subject(user.getEmail())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
@@ -94,7 +96,9 @@ public class JwtService {
         String username = extractUsername(token);
 
         return username.equals(userDetails.getUsername())
-                && !isTokenExpired(token);
+                && !isTokenExpired(token)
+                && ACCESS_TOKEN_TYPE.equals(extractClaim(token, claims ->
+                        claims.get(TOKEN_TYPE_CLAIM, String.class)));
     }
 
     private boolean isTokenExpired(String token) {
@@ -114,7 +118,7 @@ public class JwtService {
 
     private SecretKey getSigningKey() {
 
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.secretKey());
 
         return Keys.hmacShaKeyFor(keyBytes);
     }
