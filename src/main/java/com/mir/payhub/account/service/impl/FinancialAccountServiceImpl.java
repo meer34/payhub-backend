@@ -6,13 +6,13 @@ import com.mir.payhub.account.entity.FinancialAccount;
 import com.mir.payhub.account.enums.AccountStatus;
 import com.mir.payhub.account.repository.FinancialAccountRepository;
 import com.mir.payhub.account.service.FinancialAccountService;
+import com.mir.payhub.activity.enums.ActivityType;
+import com.mir.payhub.activity.event.UserActivityEvent;
+import com.mir.payhub.common.service.PublisherService;
 import com.mir.payhub.exception.BadRequestException;
-import com.mir.payhub.exception.ResourceNotFoundException;
 import com.mir.payhub.profile.entity.Profile;
-import com.mir.payhub.profile.repository.ProfileRepository;
-import com.mir.payhub.security.service.CustomUserPrincipal;
+import com.mir.payhub.profile.service.ProfileService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,18 +24,32 @@ import java.util.Locale;
 public class FinancialAccountServiceImpl implements FinancialAccountService {
 
     private final FinancialAccountRepository financialAccountRepository;
-    private final ProfileRepository profileRepository;
+    private final ProfileService profileService;
+    private final PublisherService publisherService;
 
     @Override
     @Transactional
     public FinancialAccountResponse create(CreateFinancialAccountRequest request) {
 
-        Profile profile = currentProfile();
+        Profile profile = profileService.currentProfile();
 
-        String currency = request.getCurrency().toUpperCase(Locale.ROOT);
+        String currency = request.getCurrency()
+                .trim()
+                .toUpperCase(Locale.ROOT);
 
         if (financialAccountRepository.existsByProfileIdAndCurrency(
                 profile.getId(), currency)) {
+
+            publisherService.publishCustomEvent(
+                    UserActivityEvent.builder()
+                            .type(ActivityType.ACCOUNT_CREATION_FAILED)
+                            .title("Account Creation Failed")
+                            .description("An account already exists for this currency")
+                            .status("FAILED")
+                            .referenceId(null)
+                            .build()
+            );
+
             throw new BadRequestException(
                     "An account already exists for this currency"
             );
@@ -47,7 +61,22 @@ public class FinancialAccountServiceImpl implements FinancialAccountService {
                 .status(AccountStatus.ACTIVE)
                 .build();
 
-        return toResponse(financialAccountRepository.save(account));
+        FinancialAccount savedAccount =
+                financialAccountRepository.save(account);
+
+        publisherService.publishCustomEvent(
+                UserActivityEvent.builder()
+                        .type(ActivityType.ACCOUNT_CREATED)
+                        .title("Account Created")
+                        .description(
+                                "A " + currency + " account was created successfully"
+                        )
+                        .status("SUCCESS")
+                        .referenceId(savedAccount.getId().toString())
+                        .build()
+        );
+
+        return toResponse(savedAccount);
     }
 
     @Override
@@ -55,28 +84,10 @@ public class FinancialAccountServiceImpl implements FinancialAccountService {
     public List<FinancialAccountResponse> getCurrentAccounts() {
 
         return financialAccountRepository
-                .findAllByProfileIdOrderByCreatedAtAsc(currentProfile().getId())
+                .findAllByProfileIdOrderByCreatedAtAsc(profileService.currentProfile().getId())
                 .stream()
                 .map(this::toResponse)
                 .toList();
-    }
-
-    private Profile currentProfile() {
-
-        Object principal =
-                SecurityContextHolder.getContext()
-                        .getAuthentication()
-                        .getPrincipal();
-
-        if (!(principal instanceof CustomUserPrincipal customUserPrincipal)) {
-            throw new IllegalStateException(
-                    "Authenticated user principal is unavailable"
-            );
-        }
-
-        return profileRepository.findByUserId(customUserPrincipal.getId())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Profile not found"));
     }
 
     private FinancialAccountResponse toResponse(

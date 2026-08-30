@@ -7,6 +7,7 @@ import com.mir.payhub.auth.entity.RefreshToken;
 import com.mir.payhub.auth.service.AuthService;
 import com.mir.payhub.auth.service.RefreshTokenService;
 import com.mir.payhub.common.enums.RoleType;
+import com.mir.payhub.common.service.PublisherService;
 import com.mir.payhub.exception.BadRequestException;
 import com.mir.payhub.exception.ResourceNotFoundException;
 import com.mir.payhub.exception.UnauthorizedException;
@@ -39,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenService refreshTokenService;
     private final AuthenticationManager authenticationManager;
     private final UserMapper userMapper;
+    private final PublisherService publisherService;
 
     @Override
     @Transactional
